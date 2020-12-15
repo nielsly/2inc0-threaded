@@ -37,6 +37,7 @@
 #define NROF_BITS 128
 
 sem_t sem;
+sem_t buf_sem;
 
 static void *flip_thread(void *arg);
 
@@ -58,8 +59,9 @@ int main(void)
     for (int i = 0; i < NROF_ELEMENTS; i++)
         buffer[i] = ~0;
 
-    // initialize counting semaphore, to track thread count
+    // initialize counting semaphores, to track thread count and if buffer is being accessed
     sem_init(&sem, 0, NROF_THREADS);
+    sem_init(&buf_sem, 0, 1);
 
     // we will flip each piece
     for (int i = 2; i < NROF_PIECES; i++)
@@ -82,7 +84,8 @@ int main(void)
     for (int i = 0; i < NROF_THREADS; i++)
         sem_wait(&sem);
 
-    // destroy the semaphore as we do not need it anymore
+    // destroy the semaphores as we do not need them anymore
+    sem_destroy(&buf_sem);
     sem_destroy(&sem);
 
     // loop over all pieces
@@ -103,12 +106,16 @@ static void *flip_thread(void *arg)
 
     for (int j = 1; i * j <= NROF_PIECES; j++)
     {
+        // lock buffer
+        sem_wait(&buf_sem);
         if (BIT_IS_SET(buffer[i * j / NROF_BITS], i * j % NROF_BITS))
             // flip it to 0
             BIT_CLEAR(buffer[i * j / NROF_BITS], i * j % NROF_BITS);
         else
             // If bit at position n is not set, flip to 1
             BIT_SET(buffer[i * j / NROF_BITS], i * j % NROF_BITS);
+        // unlock buffer
+        sem_post(&buf_sem);
     }
 
     // increment semaphore, indicating a new thread can be created
