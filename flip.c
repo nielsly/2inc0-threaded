@@ -19,6 +19,8 @@
 
 #include "uint128.h"
 #include "flip.h"
+#include "semaphore.h"
+#include <math.h>
 
 // Some basic defines taken from threaded_basics.c
 
@@ -33,6 +35,17 @@
 
 // clear bit n in v
 #define BIT_CLEAR(v, n) ((v) = (v) & ~BITMASK(n))
+
+sem_t sem;
+
+static void *flip_thread(void *arg);
+int min(int a, int b);
+
+typedef struct
+{
+    int i;
+    pthread_t id;
+} THREAD_ARGS;
 
 int main(void)
 {
@@ -49,32 +62,78 @@ int main(void)
     */
     int NROF_ELEMENTS = (NROF_PIECES / 128) + 1;
 
-    for (int i = 0; i < NROF_ELEMENTS; i++) {
+    for (int i = 0; i < NROF_ELEMENTS; i++)
+    {
         buffer[i] = ~0;
     }
 
-    for (int progress = 2; progress < NROF_PIECES; progress++) {
-        for (int i = 1; i < NROF_PIECES; i++) {
-            if (i % progress == 0) {
-                if (BIT_IS_SET(buffer[i/128], i%128)) {
-                // flip it to 0
-                    BIT_CLEAR(buffer[i/128], i%128);
-                } else {
-                // If bit at position n is not set, flip to 1
-                    BIT_SET(buffer[i/128], i%128);
-                }
-            }
+    int current_id;
+    pthread_t thread_id[NROF_THREADS];
+    THREAD_ARGS parameters[NROF_THREADS];
+    //sem_init(&sem, 0, NROF_THREADS);
+
+    for (int i = 2; i < NROF_PIECES; i++)
+    {
+        //sem_wait(&sem);
+        current_id = (i - 2) % NROF_THREADS;
+        parameters[current_id].id = current_id;
+        parameters[current_id].i = i;
+
+        if (pthread_create(&thread_id[current_id], NULL, &flip_thread, (void *)&parameters) != 0)
+        {
+            perror("pthread_create() error");
         }
     }
 
-    for (int i = 0; i < NROF_ELEMENTS; i++) {
-        for (int j = 0; j < 128; j++) {
-            if (BIT_IS_SET(buffer[i], j) && (i*128 + j) < NROF_PIECES) {
-                printf("%d\n", i*128 + j);
-            }
+    for (int i = 0; i < min(NROF_THREADS, NROF_PIECES - 2); i++)
+    {
+        pthread_join(thread_id[i], NULL);
+    }
+
+    //sem_destroy(&sem);
+
+    for (int i = 0; i < NROF_PIECES; i++)
+    {
+        if (BIT_IS_SET(buffer[i / 128], i % 128))
+        {
+            //printf("%d\n", i);
         }
-    }   
+    }
 
     return (0);
 }
 
+static void *flip_thread(void *arg)
+{
+    // TODOperror("test1");
+    THREAD_ARGS *arguments;
+    int i;
+
+    arguments = (THREAD_ARGS *)arg; // proper casting before dereferencing (could also be done in one statement)
+    i = (*arguments).i;             // get the integer value of the pointer
+    //free(arg);                      // we retrieved the integer value, so now the pointer can be deleted
+
+    //printf("        %lx: thread started; parameter=%d\n", pthread_self(), j);
+    // for (int i = 1; i * j <= NROF_PIECES; i++)
+    // {
+
+    //     if (BIT_IS_SET(buffer[i * j / 128], i * j % 128))
+    //     {
+    //         // flip it to 0
+    //         BIT_CLEAR(buffer[i * j / 128], i * j % 128);
+    //     }
+    //     else
+    //     {
+    //         // If bit at position n is not set, flip to 1
+    //         BIT_SET(buffer[i * j / 128], i * j % 128);
+    //     }
+    // }
+    buffer[i / 128] = buffer[i / 128] ^ BITMASK(i % 128);
+    //sem_post(&sem);
+    return (0); // you can also use pthread_exit(rtnval);
+}
+
+int min(int a, int b)
+{
+    return a < b ? a : b;
+}
